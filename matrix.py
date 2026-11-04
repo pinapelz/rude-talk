@@ -46,23 +46,30 @@ class MatrixBot:
         self.command_prefix = command_prefix
         self.allowed_rooms = set(allowed_rooms) if allowed_rooms is not None else None
         self.commands: dict[str, Callable] = {}
+        self.admin_commands: set[str] = set()
 
     def _is_allowed_room(self, room_id: str) -> bool:
         return self.allowed_rooms is None or room_id in self.allowed_rooms
 
-    def register_command(self, name: str, func: Callable):
-        """Registers a function as a command handler."""
-        self.commands[name.lower()] = func
+    def is_admin(self, room: MatrixRoom, user_id: str) -> bool:
+        return room.power_levels.get_user_level(user_id) >= 100
 
-    def command(self, name_or_func: str | Callable | None = None):
+    def register_command(self, name: str, func: Callable, admin_only: bool = False):
+        """Registers a function as a command handler."""
+        cmd = name.lower()
+        self.commands[cmd] = func
+        if admin_only:
+            self.admin_commands.add(cmd)
+
+    def command(self, name_or_func: str | Callable | None = None, *, admin_only: bool = False):
         """Decorator to register a command handler function."""
         if callable(name_or_func):
-            self.register_command(name_or_func.__name__, name_or_func)
+            self.register_command(name_or_func.__name__, name_or_func, admin_only=admin_only)
             return name_or_func
 
         def decorator(func: Callable):
             cmd_name = name_or_func if isinstance(name_or_func, str) else func.__name__
-            self.register_command(cmd_name, func)
+            self.register_command(cmd_name, func, admin_only=admin_only)
             return func
 
         return decorator
@@ -161,6 +168,8 @@ class MatrixBot:
 
         handler = self.commands.get(command)
         if handler:
+            if command in self.admin_commands and not self.is_admin(room, event.sender):
+                return
             await self._invoke_command(handler, room, event, args)
         else:
             await self.send_text(room.room_id, f"Unknown command: {command}")
