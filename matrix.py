@@ -147,6 +147,25 @@ class MatrixBot:
         if isinstance(result, str):
             await self.send_text(room.room_id, result)
 
+    async def _bridge_mentions_mtx_to_tmspk(self, room: MatrixRoom, event: RoomMessageText):
+        """Bridge mentions from Matrix to Teamspeak if any"""
+        mentions = event.source.get("content", {}).get("m.mentions", {})
+        user_ids = mentions.get("user_ids", [])
+        teamspeak_mentions = []
+        for user_id in user_ids:
+            if "tmspk.net" in user_id:
+                member = room.users.get(user_id)
+                if not hasattr(member, "display_name"):
+                    continue
+                teamspeak_mentions.append(f"<@{user_id}|{member.display_name}>")
+        if teamspeak_mentions:
+            if len(teamspeak_mentions)  == 1:
+                await self.send_text(room.room_id, f"{teamspeak_mentions[0]}")
+            else:
+                await self.send_text(room.room_id, f"{', '.join(teamspeak_mentions)}")
+            print(f"Bridged mentions from Matrix to Teamspeak: {teamspeak_mentions}")
+
+
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
         """Handles incoming m.text events and dispatches registered commands."""
         if ( # if is the bot itself
@@ -157,22 +176,24 @@ class MatrixBot:
             return
 
         body = event.body.strip()
-        if not body.startswith(self.command_prefix):
-            return
+        # command handler
+        if body.startswith(self.command_prefix):
+            parts = body[len(self.command_prefix) :].split(maxsplit=1)
+            command = parts[0].lower()
+            args = parts[1] if len(parts) > 1 else ""
 
-        parts = body[len(self.command_prefix) :].split(maxsplit=1)
-        command = parts[0].lower()
-        args = parts[1] if len(parts) > 1 else ""
+            print(f"[Command] '{command}' from {event.sender} in {room.display_name}")
 
-        print(f"[Command] '{command}' from {event.sender} in {room.display_name}")
-
-        handler = self.commands.get(command)
-        if handler:
-            if command in self.admin_commands and not self.is_admin(room, event.sender):
-                return
-            await self._invoke_command(handler, room, event, args)
+            handler = self.commands.get(command)
+            if handler:
+                if command in self.admin_commands and not self.is_admin(room, event.sender):
+                    return
+                await self._invoke_command(handler, room, event, args)
+            else:
+                await self.send_text(room.room_id, f"Unknown command: {command}")
         else:
-            await self.send_text(room.room_id, f"Unknown command: {command}")
+            await self._bridge_mentions_mtx_to_tmspk(room, event)
+
 
     async def on_file(self, room: MatrixRoom, event: RoomMessageMedia):
         if (
