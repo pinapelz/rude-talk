@@ -142,8 +142,7 @@ class MatrixBot:
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
         """Handles incoming m.text events and dispatches registered commands."""
-        # Ignore messages sent by the bot itself, before the bot started, or outside allowed rooms
-        if (
+        if ( # if is the bot itself
             event.sender == self.client.user_id
             or event.server_timestamp < BOT_START_TIME
             or not self._is_allowed_room(room.room_id)
@@ -204,19 +203,23 @@ class MatrixBot:
                         room.room_id,
                         f"{username} sent [{safe_filename}]({url}) ({size_str})",
                     )
-                elif shared_urls:
+                    print(f"Uploaded {safe_filename} to {url}")
+                elif shared_urls: # if multiple items
                     links = " | ".join(f"[{dest}]({url})" for dest, url in shared_urls.items())
                     await self.send_text(
                         room.room_id,
                         f"{username} sent {safe_filename} ({size_str}): {links}",
                     )
+                    print(f"Uploaded {safe_filename} to {shared_urls}")
                 else:
                     await self.send_text(
                         room.room_id,
                         f"{username} sent {safe_filename} ({size_str})",
                     )
+                    print(f"Uploaded {safe_filename}")
             else:
                 await self.send_text(room.room_id, f"Failed to download '{event.body}'.")
+                print(f"Failed to download '{event.body}'")
         except Exception as e:
             print(f"[Error] Failed to process '{event.body}': {e}")
             await self.send_text(room.room_id, f"Failed to upload '{event.body}'.")
