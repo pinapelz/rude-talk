@@ -1,6 +1,7 @@
 # List of constants used by rude-talk
 DEVICE_NAME = "rude-talk"
 CREDENTIALS_FILE = "credentials.json" # location where credentials are stored
+TS_SESSION_FILE = "ts_session.json"   # location where TeamSpeak session is stored
 COMMAND_PREFIX = "!"
 ALLOWED_ROOMS = [
     "",

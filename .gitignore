@@ -12,3 +12,4 @@ downloads
 .env
 poc.py
 credentials.json
+ts_session.json

@@ -12,6 +12,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from constants import TS_SESSION_FILE
+
 load_dotenv()
 
 MYTS_AUTH_URL = "https://clientapi.myteamspeak.com/authentication"
@@ -23,7 +25,8 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 )
 
-DEFAULT_SESSION_PATH = (
+DEFAULT_SESSION_PATH = Path(TS_SESSION_FILE)
+LEGACY_SESSION_PATH = (
     Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     / "ts6-matrix-poc"
     / "session.json"
@@ -200,11 +203,12 @@ def call_myts_rpc(endpoint_url: str, method_name: str, protobuf_payload: bytes) 
 
 
 def load_cached_state(path: Path = DEFAULT_SESSION_PATH) -> dict[str, str]:
-    if path.is_file():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
+    for candidate in (path, LEGACY_SESSION_PATH):
+        if candidate.is_file():
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+            except Exception:
+                continue
     return {}
 
 
@@ -244,35 +248,53 @@ def login_myts_headless(
     device_id: str = "",
     otp_renewal_token: str = "",
     device_name: str = "Desktop",
+    interactive: bool = False,
 ) -> dict[str, str]:
     if not device_id:
         device_id = uuid.uuid4().hex
 
     pw_hash_b64 = derive_myts_password_hash(email, password)
 
-    def _send_login(otp_code: str) -> dict[int, list[Any]]:
+    def _send_login(otp_code: str, cur_device_id: str) -> dict[int, list[Any]]:
         login_pb = (
             pb_bytes(1, email.strip())
             + pb_bytes(2, pw_hash_b64)
             + pb_varint(5, 1)
             + pb_bytes(6, otp_code.strip())
-            + pb_bytes(7, device_id)
+            + pb_bytes(7, cur_device_id)
             + pb_bytes(8, otp_renewal_token)
             + pb_bytes(9, device_name)
         )
         return call_myts_rpc(MYTS_AUTH_URL, "login", login_pb)
 
-    resp = _send_login(otp)
+    resp = _send_login(otp, device_id)
     err = pb_get_int(resp, 5, 0)
 
-    if err == 208 and not otp and sys.stdin.isatty():
-        otp_prompted = input("Enter 6-digit myTeamSpeak 2FA OTP code: ").strip()
-        resp = _send_login(otp_prompted)
+    attempts = 0
+    while err in (208, 209) and interactive and sys.stdin.isatty() and attempts < 3:
+        attempts += 1
+        alt_raw = pb_get_bytes(resp, 16)
+        if alt_raw:
+            alt = pb_decode(alt_raw)
+            if pb_get_str(alt, 3):
+                device_id = pb_get_str(alt, 3)
+        if err == 209:
+            print("[!] Invalid 2FA OTP code, please try again.", flush=True)
+        sys.stdout.write("Enter 6-digit myTeamSpeak 2FA OTP code: ")
+        sys.stdout.flush()
+        otp_prompted = sys.stdin.readline().strip()
+        if not otp_prompted:
+            break
+        resp = _send_login(otp_prompted, device_id)
         err = pb_get_int(resp, 5, 0)
 
     session = pb_get_str(resp, 2)
     if not session or err not in (0, 200):
         err_desc = LOGIN_ERRORS.get(err, f"UNKNOWN_LOGIN_ERROR_{err}")
+        if err == 208 and not interactive:
+            raise RuntimeError(
+                "myTeamSpeak 2FA is required. Run 'uv run ts_login.py' first to generate ts_session.json."
+            )
         raise RuntimeError(f"myTeamSpeak login failed: {err_desc} (code={err})")
 
     result: dict[str, str] = {
@@ -297,6 +319,7 @@ def login_myts_headless(
 def get_active_session(
     cache_path: Path = DEFAULT_SESSION_PATH,
     force_refresh: bool = False,
+    interactive: bool = False,
 ) -> str:
     env_session = os.environ.get("TS_SESSION", "").strip()
     if env_session and not force_refresh:
@@ -317,14 +340,17 @@ def get_active_session(
     password = os.environ.get("TS_PASSWORD") or os.environ.get("PASSWORD") or ""
     otp = os.environ.get("TS_OTP") or ""
 
-    if not email and sys.stdin.isatty():
-        email = input("myTeamSpeak Email: ").strip()
-    if not password and sys.stdin.isatty():
-        password = getpass.getpass("myTeamSpeak Password: ")
+    if interactive and sys.stdin.isatty():
+        if not email:
+            sys.stdout.write("myTeamSpeak Email: ")
+            sys.stdout.flush()
+            email = sys.stdin.readline().strip()
+        if not password:
+            password = getpass.getpass("myTeamSpeak Password: ")
 
     if not email or not password:
         raise RuntimeError(
-            "No cached myTeamSpeak session found. Set TS_EMAIL and TS_PASSWORD in .env."
+            "No cached myTeamSpeak session found. Run 'uv run ts_login.py' first or set TS_EMAIL/TS_PASSWORD in .env."
         )
 
     fresh = login_myts_headless(
@@ -333,6 +359,7 @@ def get_active_session(
         otp=otp,
         device_id=cached.get("device_id", ""),
         otp_renewal_token=cached.get("otp_renewal_token", ""),
+        interactive=interactive,
     )
     cached.update(fresh)
     save_cached_state(cache_path, cached)
