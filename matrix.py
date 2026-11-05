@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import mimetypes
 import os
 import time
 import re
@@ -369,8 +370,57 @@ class MatrixBot:
             if "tmspk.net" in event.sender:
                 await self._repair_teamspeak_to_matrix_msg(room, event)
             else:
-                await self._bridge_mentions_tmspk_to_mtx(room, event)
+                await self._bridge_mentions_mtx_to_tmspk(room, event)
 
+
+    @staticmethod
+    def _resolve_filename(
+        event: RoomMessageMedia,
+        file_bytes: bytes,
+        download_resp: object = None,
+    ) -> str:
+        content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
+        raw_filename = (
+            content.get("filename")
+            or getattr(download_resp, "filename", None)
+            or event.body
+            or "attachment"
+        )
+        safe_filename = os.path.basename(str(raw_filename).strip()) or "attachment"
+
+        _, ext = os.path.splitext(safe_filename)
+        if not ext or not re.match(r"^\.[A-Za-z0-9]{1,10}$", ext):
+            ext = ""
+            for candidate in (getattr(download_resp, "filename", None), event.body):
+                if candidate:
+                    _, cand_ext = os.path.splitext(os.path.basename(str(candidate).strip()))
+                    if cand_ext and re.match(r"^\.[A-Za-z0-9]{1,10}$", cand_ext):
+                        ext = cand_ext
+                        break
+
+            if not ext:
+                info = content.get("info")
+                mimetype = (
+                    (info.get("mimetype") if isinstance(info, dict) else None)
+                    or getattr(download_resp, "content_type", None)
+                )
+                if mimetype:
+                    ext = mimetypes.guess_extension(mimetype.split(";", 1)[0].strip()) or ""
+
+            if not ext:
+                if file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+                    ext = ".png"
+                elif file_bytes.startswith(b"\xff\xd8\xff"):
+                    ext = ".jpg"
+                elif file_bytes.startswith((b"GIF87a", b"GIF89a")):
+                    ext = ".gif"
+                elif file_bytes.startswith(b"RIFF") and file_bytes[8:12] == b"WEBP":
+                    ext = ".webp"
+
+            if ext:
+                safe_filename = f"{safe_filename}{ext}"
+
+        return safe_filename
 
     async def on_file(self, room: MatrixRoom, event: RoomMessageMedia):
         if (
@@ -388,6 +438,7 @@ class MatrixBot:
         print(f"[File] '{event.body}' from {username} in {room.display_name}")
 
         try:
+            download_resp = None
             if "://" not in event.url:
                 file_bytes = await asyncio.to_thread(
                     fetch_ts_file,
@@ -400,7 +451,7 @@ class MatrixBot:
                 file_bytes = getattr(download_resp, "body", None)
 
             if isinstance(file_bytes, bytes):
-                safe_filename = os.path.basename(event.body)
+                safe_filename = self._resolve_filename(event, file_bytes, download_resp)
                 size_str = _format_size(len(file_bytes))
 
                 shared_urls = await asyncio.to_thread(upload_file, file_bytes, safe_filename)
@@ -408,20 +459,20 @@ class MatrixBot:
                     url = next(iter(shared_urls.values()))
                     await self.send_text(
                         room.room_id,
-                        f"{username} sent [{safe_filename}]({url}) ({size_str})",
+                        f"{username} attached [{safe_filename}]({url}) ({size_str})",
                     )
                     print(f"Uploaded {safe_filename} to {url}")
                 elif shared_urls: # if multiple items
                     links = " | ".join(f"[{dest}]({url})" for dest, url in shared_urls.items())
                     await self.send_text(
                         room.room_id,
-                        f"{username} sent {safe_filename} ({size_str}): {links}",
+                        f"{username} attached {safe_filename} ({size_str}): {links}",
                     )
                     print(f"Uploaded {safe_filename} to {shared_urls}")
                 else:
                     await self.send_text(
                         room.room_id,
-                        f"{username} sent {safe_filename} ({size_str})",
+                        f"{username} attached {safe_filename} ({size_str})",
                     )
                     print(f"Uploaded {safe_filename}")
             else:
