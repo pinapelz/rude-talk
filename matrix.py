@@ -17,7 +17,7 @@ from nio import (
     RoomMessageText,
 )
 
-from constants import COMMAND_PREFIX, CREDENTIALS_FILE, DEVICE_NAME
+from constants import COMMAND_PREFIX, CREDENTIALS_FILE, AUTO_REPLY_FILE, DEVICE_NAME
 from teamspeak import fetch_ts_file
 from uploaders import upload_file
 
@@ -39,6 +39,23 @@ def _format_size(num_bytes: int) -> str:
         size /= 1024
     return f"{num_bytes} B"
 
+
+def _load_auto_reply_data() -> dict[str, str]:
+    if not os.path.exists(AUTO_REPLY_FILE):
+        with open(AUTO_REPLY_FILE, "w") as f:
+            json.dump({}, f)
+    with open(AUTO_REPLY_FILE, "r") as f:
+        return json.load(f)
+
+AUTO_REPLY_DATA = {k.lower(): v for k, v in _load_auto_reply_data().items()}
+AUTO_REPLY_PATTERN = (
+    re.compile(
+        r"\b(?:" + "|".join(re.escape(k) for k in sorted(AUTO_REPLY_DATA, key=len, reverse=True)) + r")\b",
+        flags=re.IGNORECASE,
+    )
+    if AUTO_REPLY_DATA
+    else None
+)
 
 class MatrixBot:
     def __init__(
@@ -108,15 +125,22 @@ class MatrixBot:
 
         return self.client
 
-    async def send_text(self, room_id: str, text: str):
+    async def send_text(self, room_id: str, text: str, reply_to_event_id: str | None = None):
         """Helper method to send plain text messages to a room."""
+        content: dict = {
+            "msgtype": "m.text",
+            "body": text,
+        }
+        if reply_to_event_id:
+            content["m.relates_to"] = {
+                "m.in_reply_to": {
+                    "event_id": reply_to_event_id,
+                }
+            }
         await self.client.room_send(
             room_id=room_id,
             message_type="m.room.message",
-            content={
-                "msgtype": "m.text",
-                "body": text,
-            },
+            content=content,
         )
 
     async def _invoke_command(
@@ -340,6 +364,14 @@ class MatrixBot:
                 content=content,
             )
 
+    def _try_matching_auto_reply_kwarg(self, message: str) -> str | None:
+        if not AUTO_REPLY_PATTERN: # quick exit if no auto reply patterns
+            return None
+        matches = []
+        for m in AUTO_REPLY_PATTERN.finditer(message):
+            matches.append(AUTO_REPLY_DATA[m.group(0).lower()])
+        return " ".join(matches) if matches else None
+
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
         """Handles incoming m.text events and dispatches registered commands."""
@@ -371,6 +403,10 @@ class MatrixBot:
                 await self._repair_teamspeak_to_matrix_msg(room, event)
             else:
                 await self._bridge_mentions_mtx_to_tmspk(room, event)
+            auto_match_reply = self._try_matching_auto_reply_kwarg(body)
+            if auto_match_reply:
+                print(f"[Auto Reply] '{auto_match_reply}' to {event.sender} in {room.display_name}")
+                await self.send_text(room.room_id, auto_match_reply, reply_to_event_id=event.event_id)
 
 
     @staticmethod

@@ -12,3 +12,4 @@ UPLOAD_DESTINATIONS = [
     "nextcloud",
 ]
 NEXTCLOUD_REMOTE_PATH = "ts-matrix-bridge"
+AUTO_REPLY_FILE = "auto-reply.json"
