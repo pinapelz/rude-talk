@@ -492,7 +492,10 @@ class MatrixBot:
                 safe_filename = self._resolve_filename(event, file_bytes, download_resp)
                 size_str = _format_size(len(file_bytes))
 
-                shared_urls = await asyncio.to_thread(upload_file, file_bytes, safe_filename)
+                destinations = None if "[Discord]" in username else ["nextcloud"]
+                shared_urls = await asyncio.to_thread(
+                    upload_file, file_bytes, safe_filename, destinations
+                )
                 if len(shared_urls) == 1:
                     url = next(iter(shared_urls.values()))
                     await self.send_text(
