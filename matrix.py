@@ -498,6 +498,7 @@ class MatrixBot:
                     await self.send_text(
                         room.room_id,
                         f"{username} attached [{safe_filename}]({url}) ({size_str})",
+                        reply_to_event_id=event.event_id,
                     )
                     print(f"Uploaded {safe_filename} to {url}")
                 elif shared_urls: # if multiple items
@@ -505,12 +506,14 @@ class MatrixBot:
                     await self.send_text(
                         room.room_id,
                         f"{username} attached {safe_filename} ({size_str}): {links}",
+                        reply_to_event_id=event.event_id,
                     )
                     print(f"Uploaded {safe_filename} to {shared_urls}")
                 else:
                     await self.send_text(
                         room.room_id,
                         f"{username} attached {safe_filename} ({size_str})",
+                        reply_to_event_id=event.event_id,
                     )
                     print(f"Uploaded {safe_filename}")
             else:
