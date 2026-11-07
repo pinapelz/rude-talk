@@ -3,9 +3,11 @@ import time
 from collections.abc import Callable
 
 from constants import UPLOAD_DESTINATIONS
+from uploaders.imgbb import upload_to_imgbb
 from uploaders.nextcloud import upload_to_nextcloud
 
 UPLOADERS: dict[str, Callable[[bytes, str], str]] = {
+    "imgbb": upload_to_imgbb,
     "nextcloud": upload_to_nextcloud,
 }
 
@@ -31,4 +33,16 @@ def upload_file(
 ) -> dict[str, str]:
     targets = destinations if destinations is not None else UPLOAD_DESTINATIONS
     unique_name = _unique_filename(filename)
-    return {dest: upload_to_destination(data, unique_name, dest) for dest in targets}
+    last_error: Exception | None = None
+
+    for dest in targets:
+        try:
+            url = upload_to_destination(data, unique_name, dest)
+            return {dest: url}
+        except Exception as e:
+            print(f"[Upload] '{dest}' skipped/failed for '{filename}': {e}")
+            last_error = e
+
+    if last_error:
+        raise last_error
+    return {}

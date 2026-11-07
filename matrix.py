@@ -452,6 +452,8 @@ class MatrixBot:
                     ext = ".gif"
                 elif file_bytes.startswith(b"RIFF") and file_bytes[8:12] == b"WEBP":
                     ext = ".webp"
+                elif file_bytes.startswith(b"%PDF-"):
+                    ext = ".pdf"
 
             if ext:
                 safe_filename = f"{safe_filename}{ext}"

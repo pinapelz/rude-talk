@@ -9,7 +9,7 @@ ALLOWED_ROOMS = [
 
 # Uploader destinations to run on downloaded files
 UPLOAD_DESTINATIONS = [
-    "nextcloud",
+    "imgbb", "nextcloud"
 ]
 NEXTCLOUD_REMOTE_PATH = "ts-matrix-bridge"
 AUTO_REPLY_FILE = "auto-reply.json"
