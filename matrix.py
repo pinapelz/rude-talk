@@ -50,7 +50,7 @@ def _load_auto_reply_data() -> dict[str, str]:
 AUTO_REPLY_DATA = {k.lower(): v for k, v in _load_auto_reply_data().items()}
 AUTO_REPLY_PATTERN = (
     re.compile(
-        r"\b(?:" + "|".join(re.escape(k) for k in sorted(AUTO_REPLY_DATA, key=len, reverse=True)) + r")\b",
+        r"(?<!\w)(?:" + "|".join(re.escape(k) for k in sorted(AUTO_REPLY_DATA, key=len, reverse=True)) + r")(?!\w)",
         flags=re.IGNORECASE,
     )
     if AUTO_REPLY_DATA
