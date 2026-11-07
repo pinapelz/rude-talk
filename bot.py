@@ -33,6 +33,10 @@ async def pick_food(room: MatrixRoom, event: RoomMessageText, args: str):
     food_item = food.pick_choice_from_layer(category)
     await bot.send_text(room.room_id, "how about " + food_item.name + "?" + " for a " + args + " bite:" + food_item.url + "")
 
+@bot.command()
+async def gmtfm(room: MatrixRoom, event: RoomMessageText, args: str):
+    await bot.send_text(room.room_id, "ok fatty: https://www.google.com/maps/d/u/0/viewer?mid=1Brpw12sBY_C7pPSVHgLYGs879RJ3BAI")
+
 if __name__ == "__main__":
     try:
         asyncio.run(bot.run())
