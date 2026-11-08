@@ -14,3 +14,5 @@ UPLOAD_DESTINATIONS = [
 NEXTCLOUD_REMOTE_PATH = "ts-matrix-bridge"
 AUTO_REPLY_FILE = "auto-reply.json"
 MAP_ID = ""
+YAMTRACK=""
+LIST_ID=1
