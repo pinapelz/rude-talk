@@ -132,15 +132,16 @@ async def loc_add(room: MatrixRoom, event: RoomMessageText, args: str):
         )
         return
 
+    item_url = yamtrack_list.get_item_url(res.item)
     if res.added:
         await bot.send_text(
             room.room_id,
-            f"Added '{res.item.title}' ({res.item.media_type}) to the list!",
+            f"Added '{res.item.title}' ({res.item.media_type}) to the list! {item_url}",
         )
     else:
         await bot.send_text(
             room.room_id,
-            f"'{res.item.title}' ({res.item.media_type}) is already in the list.",
+            f"'{res.item.title}' ({res.item.media_type}) is already in the list: {item_url}",
         )
 
 

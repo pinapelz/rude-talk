@@ -1,6 +1,9 @@
 import os
 import random
+import re
+import unicodedata
 from collections import namedtuple
+from urllib.parse import quote
 from dotenv import load_dotenv
 import requests
 
@@ -265,4 +268,23 @@ def pick_random_item(
     if not items:
         return None
     return random.choice(items)
+
+
+def _slugify(value: str) -> str:
+    normalized = (
+        unicodedata.normalize("NFKD", str(value))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    cleaned = re.sub(r"[^\w\s-]", "", normalized.lower())
+    cleaned = re.sub(r"[-\s]+", "-", cleaned).strip("-_")
+    return cleaned or quote(str(value), safe="") or "item"
+
+
+def get_item_url(item: ListItem | SearchResult) -> str:
+    """Return the Yamtrack details URL for a media item."""
+    base = YAMTRACK.rstrip("/")
+    title_slug = _slugify(item.title)
+    return f"{base}/details/{item.source}/{item.media_type}/{item.media_id}/{title_slug}"
+
 
