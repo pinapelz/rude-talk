@@ -95,6 +95,12 @@ class MatrixBot:
 
         return decorator
 
+    def help(self, name: str) -> str:
+        if name in self.commands:
+            func = self.commands[name]
+            return func.__doc__ or f"No help available for command '{name}'"
+        return f"Unknown command: {name}"
+
     async def login(self) -> AsyncClient:
         """Logs in using saved credentials or falls back to username/password."""
         if os.path.exists(CREDENTIALS_FILE):
